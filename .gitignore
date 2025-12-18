@@ -1,0 +1,21 @@
+# Unity generated
+Library/
+Temp/
+Logs/
+obj/
+
+# Editor / IDE
+.vscode/
+.vs/
+*.csproj
+*.sln
+
+# Unity temp/cache
+.utmp/
+
+# Burst / Unity backup folders
+*_BurstDebugInformation_DoNotShip/
+*_BackUpThisFolder_ButDontShipItWithYourGame/
+
+# Build artifacts
+*.apk
