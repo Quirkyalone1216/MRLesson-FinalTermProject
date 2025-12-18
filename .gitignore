@@ -19,3 +19,8 @@ obj/
 
 # Build artifacts
 *.apk
+
+# compressed files
+*.zip
+*.rar
+*.7z
