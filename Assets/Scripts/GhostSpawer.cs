@@ -14,16 +14,23 @@ public class GhostSpawner : MonoBehaviour
 
     [Header("Placement")]
     public float minEdgeDistance = 0.3f;
-    public MRUKAnchor.SceneLabels spawnLabels = MRUKAnchor.SceneLabels.WALL_FACE;
-    public float normalOffset = 0.06f;
+
+    // é è¨­åœ¨åœ°æ¿ç”Ÿæˆï¼›è‹¥ä½ è¦æ¡Œé¢è«‹åœ¨ Inspector æ”¹æˆ TABLEï¼ˆè‹¥æœ‰ï¼‰
+    public MRUKAnchor.SceneLabels spawnLabels = MRUKAnchor.SceneLabels.FLOOR;
+
+    // æŽ¨é›¢è¡¨é¢ä¸€é»žé»žï¼ˆç”Ÿæˆåœ¨æ¡Œé¢/åœ°æ¿ä¸Šæ–¹ï¼‰ï¼Œé¿å…ç©¿æ¨¡
+    public float normalOffset = 0.04f;
+
+    [Header("Game")]
+    public Transform tower;
 
     [Header("Lifetime / Pooling")]
     public int maxAlive = 25;
     public float lifeTime = 12f;
 
     [Header("Safety")]
-    public bool sanitizeSpawn = true;              // ¡¹ 1. ±Ò¥Î¥Í¦¨ª«¥ó®ø¬r
-    public bool forceTransparentNoDepth = true;    // ¡¹ 2. ³z©ú+¤£¼g²`«×
+    public bool sanitizeSpawn = true;
+    public bool forceTransparentNoDepth = true;
     public bool fallbackSpawnTestPrimitive = false;
 
     private float _timer;
@@ -45,7 +52,12 @@ public class GhostSpawner : MonoBehaviour
         _timer -= spawnTimer;
 
         _alive.RemoveAll(go => go == null);
-        while (_alive.Count >= maxAlive) { var old = _alive[0]; _alive.RemoveAt(0); if (old) Destroy(old); }
+        while (_alive.Count >= maxAlive)
+        {
+            var old = _alive[0];
+            _alive.RemoveAt(0);
+            if (old) Destroy(old);
+        }
 
         TrySpawnOnce();
     }
@@ -58,28 +70,39 @@ public class GhostSpawner : MonoBehaviour
         for (int i = 0; i < attemptsPerSpawn; i++)
         {
             if (room.GenerateRandomPositionOnSurface(
-                    MRUK.SurfaceType.VERTICAL,
+                    MRUK.SurfaceType.FACING_UP,      // â˜… ä¿®æ­£ï¼šæœä¸Šæ°´å¹³é¢ï¼ˆåœ°æ¿/æ¡Œé¢ï¼‰
                     minEdgeDistance,
                     LabelFilter.Included(spawnLabels),
                     out var pos, out var norm))
             {
                 float pushOut = Mathf.Max(0.01f, Mathf.Abs(normalOffset));
-                var rot = Quaternion.LookRotation(-norm, Vector3.up);
+
+                // æ°´å¹³é¢ç”¨éš¨æ©Ÿ Y æ—‹è½‰è¼ƒç©©
+                var rot = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
 
                 GameObject go = null;
+
                 if (prefabToSpawn != null)
+                {
                     go = Instantiate(prefabToSpawn, pos + norm * pushOut, rot);
+                }
                 else if (fallbackSpawnTestPrimitive)
                 {
                     go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                     go.transform.SetPositionAndRotation(pos + norm * pushOut, rot);
                     go.transform.localScale = Vector3.one * 0.1f;
-                    var c = go.GetComponent<Collider>(); if (c) Destroy(c);
+                    var c = go.GetComponent<Collider>();
+                    if (c) Destroy(c);
                 }
 
                 if (go != null)
                 {
-                    if (sanitizeSpawn) SanitizeForPassthrough(go);      // ¡¹ ®Ö¤ß¡G®ø¬r
+                    // æŒ‡æ´¾ Tower çµ¦æ€ªï¼ˆè®“æ€ªæœƒå¾€å¡”èµ°ï¼‰
+                    var enemy = go.GetComponent<GhostEnemy>();
+                    if (!enemy) enemy = go.GetComponentInChildren<GhostEnemy>();
+                    if (enemy) enemy.tower = tower;
+
+                    if (sanitizeSpawn) SanitizeForPassthrough(go);
                     if (forceTransparentNoDepth) MakeTransparentNoDepth(go);
 
                     _alive.Add(go);
@@ -90,7 +113,6 @@ public class GhostSpawner : MonoBehaviour
         }
     }
 
-    // ¡X¡X ²¾°£·|¯}Ãa¦X¦¨ªºªF¦è¡G¤l¬Û¾÷¡BSkybox¡BOverlay¡B¥þ¿Ã¹õ Canvas µ¥ ¡X¡X
     void SanitizeForPassthrough(GameObject root)
     {
         foreach (var cam in root.GetComponentsInChildren<Camera>(true))
@@ -98,11 +120,13 @@ public class GhostSpawner : MonoBehaviour
             Debug.LogWarning($"[GhostSpawner] Disabled child Camera on {cam.name}");
             cam.enabled = false;
         }
+
         foreach (var sky in root.GetComponentsInChildren<Skybox>(true))
         {
             Debug.LogWarning($"[GhostSpawner] Removed Skybox on {sky.name}");
             Destroy(sky);
         }
+
 #if OCULUS_INTEGRATION_PRESENT
         foreach (var ov in root.GetComponentsInChildren<OVROverlay>(true))
         {
@@ -110,6 +134,7 @@ public class GhostSpawner : MonoBehaviour
             Destroy(ov);
         }
 #endif
+
         foreach (var canvas in root.GetComponentsInChildren<Canvas>(true))
         {
             if (canvas.renderMode == RenderMode.ScreenSpaceOverlay)
@@ -119,11 +144,11 @@ public class GhostSpawner : MonoBehaviour
                 canvas.worldCamera = Camera.main;
             }
         }
-        // ¨¾§b¡G­Y¥Í¦¨ª«¥ó¤Ø¤o·¥¤j¡AÁY¦^¨ÓÁ×§K¾Qº¡µø³¥
-        if (root.transform.lossyScale.magnitude > 50f) root.transform.localScale = Vector3.one;
+
+        if (root.transform.lossyScale.magnitude > 50f)
+            root.transform.localScale = Vector3.one;
     }
 
-    // ¡X¡X §â©Ò¦³ Renderer ªº§÷½è¤Á¦¨³z©ú¡B¤£¼g²`«×¡BµL³±¼v ¡X¡X
     void MakeTransparentNoDepth(GameObject root)
     {
         foreach (var r in root.GetComponentsInChildren<Renderer>(true))
@@ -131,14 +156,17 @@ public class GhostSpawner : MonoBehaviour
             r.shadowCastingMode = ShadowCastingMode.Off;
             r.receiveShadows = false;
 
-            var mats = r.materials; // ¹ê¨Ò¤Æ§÷½è
+            var mats = r.materials;
             for (int i = 0; i < mats.Length; i++)
             {
-                var m = mats[i]; if (!m) continue;
-                m.renderQueue = (int)RenderQueue.Transparent;  // 3000+
-                if (m.HasProperty("_Surface")) m.SetFloat("_Surface", 1f);  // 1=Transparent
+                var m = mats[i];
+                if (!m) continue;
+
+                m.renderQueue = (int)RenderQueue.Transparent;
+                if (m.HasProperty("_Surface")) m.SetFloat("_Surface", 1f);
                 if (m.HasProperty("_ZWrite")) m.SetInt("_ZWrite", 0);
                 if (m.HasProperty("_Cull")) m.SetInt("_Cull", (int)CullMode.Back);
+
                 m.DisableKeyword("_ALPHATEST_ON");
                 m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
                 m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
