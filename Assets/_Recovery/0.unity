@@ -921,10 +921,6 @@ MonoBehaviour:
   shootingPoint: {fileID: 266094145}
   maxLineDistance: 5
   lineShowTimer: 0.3
-  beamRadius: 0.03
-  rayOriginBackoff: 0.02
-  closeRangeOverlapRadius: 0.05
-  piercing: 1
   damagePerShot: 1
   source: {fileID: 904737591}
   shootingAudioClip: {fileID: 8300000, guid: d3342c77b9c4e8546b69650a08b2ab55, type: 3}
@@ -1263,7 +1259,7 @@ GameObject:
   - component: {fileID: 1063195891}
   - component: {fileID: 1063195895}
   - component: {fileID: 1063195896}
-  m_Layer: 6
+  m_Layer: 0
   m_Name: Tower
   m_TagString: Untagged
   m_Icon: {fileID: 0}
