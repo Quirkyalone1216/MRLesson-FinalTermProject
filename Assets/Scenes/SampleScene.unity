@@ -824,7 +824,7 @@ MonoBehaviour:
   prefabToSpawn: {fileID: 2428399519879731356, guid: 35fae3d91e0c2a04c897d04ab0c184fa, type: 3}
   attemptsPerSpawn: 32
   minEdgeDistance: 0.3
-  spawnLabels: 8
+  spawnLabels: 136
   normalOffset: 0.04
   tower: {fileID: 1063195894}
   maxAlive: 25
@@ -966,7 +966,7 @@ MonoBehaviour:
     m_Bits: 8
   occlusionMask:
     serializedVersion: 2
-    m_Bits: 0
+    m_Bits: 64
   shootingButton: 67108864
   linePrefab: {fileID: 5145581107141981926, guid: 5a8cfc385abc16744ba5410de6563dbf, type: 3}
   shootingPoint: {fileID: 266094145}
