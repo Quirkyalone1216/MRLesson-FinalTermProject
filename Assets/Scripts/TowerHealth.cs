@@ -1,9 +1,16 @@
+using System;
 using UnityEngine;
 
 public class TowerHealth : MonoBehaviour
 {
     public int maxHp = 100;
-    [SerializeField] int hp;
+    [SerializeField] private int hp;
+
+    public int Hp => hp;
+    public bool IsDead => hp <= 0;
+
+    /// <summary>塔死亡事件：hp 由 >0 變成 0 時觸發一次</summary>
+    public event Action Died;
 
     void Awake()
     {
@@ -24,6 +31,9 @@ public class TowerHealth : MonoBehaviour
         Debug.Log($"[Tower] HP: {hp}/{maxHp}");
 
         if (hp == 0)
+        {
             Debug.Log("[Tower] Game Over");
+            Died?.Invoke();
+        }
     }
 }

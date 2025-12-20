@@ -457,6 +457,54 @@ GameObject:
   m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: abe28631483e3bb4995a7718695f48c8, type: 3}
   m_PrefabInstance: {fileID: 904737588}
   m_PrefabAsset: {fileID: 0}
+--- !u!1 &579201224
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 579201226}
+  - component: {fileID: 579201225}
+  m_Layer: 0
+  m_Name: GameManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &579201225
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 579201224}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7ba52deddfb88204dac51035334888df, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GameManager
+  towerHealth: {fileID: 1063195895}
+  disableSpawners: 1
+  disableRayGuns: 1
+  clearGhosts: 1
+--- !u!4 &579201226
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 579201224}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &621985723
 GameObject:
   m_ObjectHideFlags: 0
@@ -916,6 +964,9 @@ MonoBehaviour:
   layerMask:
     serializedVersion: 2
     m_Bits: 8
+  occlusionMask:
+    serializedVersion: 2
+    m_Bits: 0
   shootingButton: 67108864
   linePrefab: {fileID: 5145581107141981926, guid: 5a8cfc385abc16744ba5410de6563dbf, type: 3}
   shootingPoint: {fileID: 266094145}
@@ -1972,3 +2023,4 @@ SceneRoots:
   - {fileID: 2045182107}
   - {fileID: 798601893}
   - {fileID: 1063195894}
+  - {fileID: 579201226}
