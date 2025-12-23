@@ -1,34 +1,86 @@
-# Technical Spike 報告（MR 桌面生成 + 射線射擊）
+# Technical Spike 報告（MR 桌面放置 + 射線射擊 + 塔防規則）
 
 ## 1. Spike 目的
-本 Spike 的目的在於確認「MR 桌面辨識與物件放置」以及「射線槍互動」在 Meta Quest 上可正常運作，足以支撐期末塔防核心玩法。
+本 Spike 的目的在於確認下列技術在 Meta Quest MR 上可穩定運作，並能支撐期末塔防核心玩法：
+1) MR 場景理解（桌面/水平面）  
+2) 桌面放置（塔位置穩定且在玩家面前）  
+3) 右手射線槍互動（命中、回饋、傷害）  
+4) 塔防規則（怪→塔扣血→Game Over）
 
-## 2. 核心技術點
-1. MR 平面理解：以 Meta XR MRUtilityKit（MRUK）取得房間表面，於水平面（桌面）隨機取樣生成點位。  
-2. MR 物件放置：在取樣點位 Instantiate Ghost Prefab，並做適當法線偏移與 Upright 旋轉修正。  
-3. 互動射擊：右手扳機輸入 → Raycast → 命中判定 → 特效/音效回饋 → 對敵人造成傷害。  
-4. 塔防規則：敵人朝塔移動，碰觸塔時扣血；塔血量歸零 Game Over。
+## 2. 核心技術點與對應實作
+### 2.1 MR 平面理解（MRUK）
+- 取得 `MRUK.Instance` 與 `CurrentRoom`
+- 以 `GenerateRandomPositionOnSurface(MRUK.SurfaceType.FACING_UP, ...)` 取樣朝上的水平面點位
+- Label 以 bitmask 篩選（建議 TABLE + OTHER 容錯）
 
-## 3. 實作對應（專案檔案）
-- 生成：`Assets/Scripts/GhostSpawer.cs`（改為 HORIZONTAL surface）  
-- 射擊：`Assets/Scripts/RayGun.cs`（加入 IDamageable 傷害呼叫）  
-- 敵人：新增 `Assets/Scripts/GhostEnemy.cs`  
-- 高塔：新增 `Assets/Scripts/TowerHealth.cs`  
-- 場景：`Assets/Scenes/SampleScene.unity`（新增 Tower 物件並配置）
+對應檔案：
+- `Assets/Scripts/GhostSpawer.cs`（類別：GhostSpawner）
+- `Assets/Scripts/TowerPlacer.cs`
 
-## 4. 實驗步驟（Repro Steps）
-1. 佩戴 Quest，啟動應用程式並完成 MR 空間掃描（桌面需可辨識）。  
-2. 觀察桌面：每隔固定時間生成 Ghost。  
-3. 按下右手扳機：射線與命中特效出現；命中 Ghost 後 Ghost 被擊殺。  
-4. 放任 Ghost 走向 Tower：Ghost 觸塔後 Tower HP 下降。  
-5. 重複直到 HP=0：顯示 Game Over（或 Console 訊息），並停止生成與射擊。
+### 2.2 桌面放置（避免初期漂移的關鍵）
+問題：MR 專案常見「一開始放對，幾秒後整個物件跑遠」的漂移現象，原因多為 tracking origin/world lock 尚未穩定就放置。
 
-## 5. 成果與結論
-- 已證實：MR 桌面取樣生成與射線互動可於 Quest 上運作，能支撐期末核心玩法。  
-- 下一步（非 Spike 必要）：加入 UI（HP bar / GameOver Panel）、波次生成、難度曲線、分數統計與音效強化。
+對策（本專案）：
+- `TowerPlacer` 在 MRUK ready 後等待 warmupSeconds
+- 之後多次 retry（autoRetries），挑選「你面前、距離適中、且不低於相機太多」的桌面點放置塔
+
+對應檔案：
+- `Assets/Scripts/TowerPlacer.cs`
+
+### 2.3 射線槍互動（命中穩定性）
+- 右手扳機：OVRInput（RIndexTrigger）
+- 命中策略：
+  - 近距離 `OverlapSphere`（避免槍口貼近 collider 時 raycast/spherecast 異常）
+  - 中遠距離 `SphereCastAll`（beamRadius 提升命中穩定）
+  - `occlusionMask`（Tower 遮擋，避免穿塔打到背後敵人）
+  - `piercing`（可選：同一槍穿透多個敵人）
+
+對應檔案：
+- `Assets/Scripts/RayGun.cs`
+
+### 2.4 塔防規則與 Game Over
+- `GhostEnemy` 朝塔移動，觸塔扣血並自毀
+- `TowerHealth` 血量歸零觸發 `Died` 事件
+- `GameManager` 接管 Game Over：停用 spawner/gun、清場
+
+對應檔案：
+- `Assets/Scripts/GhostEnemy.cs`
+- `Assets/Scripts/TowerHealth.cs`
+- `Assets/Scripts/GameManager.cs`
+
+## 3. Repro Steps（助教可照做）
+1. Build & Run 到 Quest  
+2. 進入 MR 模式並完成掃描  
+3. 觀察塔：應自動出現在「你面前的桌面」上  
+4. 觀察生成：桌面上應持續生成 Ghost  
+5. 射擊：扣右手扳機，命中 Ghost 應造成傷害/擊殺（有特效/音效）  
+6. 扣血：放任 Ghost 碰塔，塔 HP 下降  
+7. HP=0：Game Over（停止生成與射擊、清場）
+
+## 4. 觀測結果（請填入你們實測數據；格式先固定，便於評分）
+- 測試裝置：__________（Quest 2 / Quest 3 / 其他）
+- 測試環境：室內光源 ________；桌面材質 ________；掃描耗時約 ________ 秒
+- 放置穩定性：
+  - warmupSeconds = ________
+  - autoRetries = ________
+  - 是否出現「放置後漂移/跑遠」：有 / 無
+- 生成穩定性：
+  - spawnTimer = ________
+  - 是否出現生成穿模/掉落：有 / 無
+- 射擊命中穩定性：
+  - beamRadius = ________
+  - 近距離是否容易 miss：是 / 否
+- 性能（建議簡述即可）：
+  - 目視 FPS：穩定 / 偶發掉幀（情境：__________）
+  - 同時怪物數上限 maxAlive：__________
+
+## 5. 已知限制與下一步（非 Spike 必做，但可作為期末加分方向）
+- UI：加入 Game Over 面板、重新開始流程、分數/波次
+- 難度：波次生成、速度與血量曲線、生成點避障與分散策略
+- MR 互動：更明確的桌面可視化提示、掃描狀態指示
+- 視覺：更一致的材質/透明與深度策略（Passthrough 下的可讀性）
 
 ## 6. 影像證據（建議）
-- 在 `docs/media/` 放置：
-  - `spike_spawn.mp4`：桌面生成成功
-  - `spike_shoot.mp4`：射擊命中與擊殺
-  - `spike_tower_damage.mp4`：觸塔扣血與 GameOver
+- `docs/media/spike_spawn.mp4`
+- `docs/media/spike_shoot.mp4`
+- `docs/media/spike_tower_damage.mp4`
