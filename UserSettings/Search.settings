@@ -9,7 +9,7 @@ onBoardingDoNotAskAgain = true
 showPackageIndexes = false
 showStatusBar = false
 scopes = {
-	"last_search.66F56946" = "Max Distance From Camera"
+	"last_search.66F56946" = "Anchored Position"
 	"OpenInspectorPreview.66F56946" = "0"
 	"currentGroup.66F56946" = "all"
 }
@@ -68,6 +68,7 @@ providers = {
 objectSelectors = {
 }
 recentSearches = [
+	"Anchored Position"
 	"Max Distance From Camera"
 	""
 	"Preferred Distance From Camera"

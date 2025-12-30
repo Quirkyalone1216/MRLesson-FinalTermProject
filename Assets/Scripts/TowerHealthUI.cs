@@ -7,11 +7,19 @@ public class TowerHealthUI : MonoBehaviour
     public TowerHealth towerHealth;
     public Slider hpSlider;
 
+    [Tooltip("拖 TowerVisual 底下任一個有 Renderer 的物件（建議 tower-round-build-c 的 MeshRenderer），用來計算塔頂位置。")]
+    public Renderer boundsSource;
+
+    [Tooltip("血條離塔頂的高度（公尺）。建議 0.02~0.06。")]
+    public float topPadding = 0.03f;
+
     [Tooltip("建議拖 CenterEyeAnchor，讓血條永遠面向玩家")]
     public Transform billboardCamera;
 
     [Header("Layout")]
-    public Vector3 worldOffset = new Vector3(0f, 0.25f, 0f); // 血條在塔上方的偏移
+    [Tooltip("當 boundsSource 未指定時，才會使用 worldOffset（相對 towerHealth transform）。")]
+    public Vector3 worldOffset = new Vector3(0f, 0.25f, 0f);
+
     public bool billboard = true;
 
     private int lastHp = int.MinValue;
@@ -22,6 +30,21 @@ public class TowerHealthUI : MonoBehaviour
         // 方便：如果你把此腳本掛在 Tower 子物件，可自動抓
         if (!towerHealth) towerHealth = GetComponentInParent<TowerHealth>();
         if (!hpSlider) hpSlider = GetComponentInChildren<Slider>(true);
+
+        // 嘗試自動找 boundsSource（優先找 TowerVisual 底下的 Renderer）
+        if (!boundsSource)
+        {
+            // 從自己所在物件往下找
+            boundsSource = GetComponentInChildren<Renderer>(true);
+
+            // 若掛在 Canvas，Renderer 不在 Canvas 底下，改成找父層（Tower）底下的 Renderer
+            if (!boundsSource && transform.parent != null)
+                boundsSource = transform.parent.GetComponentInChildren<Renderer>(true);
+
+            // 再不行就找整個 Tower 節點底下
+            if (!boundsSource && towerHealth != null)
+                boundsSource = towerHealth.GetComponentInChildren<Renderer>(true);
+        }
     }
 
     private void Awake()
@@ -43,7 +66,6 @@ public class TowerHealthUI : MonoBehaviour
 
     private void OnEnable()
     {
-        // 可選：塔死了就把血條關掉（或換成 Game Over 樣式）
         if (towerHealth != null)
             towerHealth.Died += OnTowerDied;
     }
@@ -56,16 +78,27 @@ public class TowerHealthUI : MonoBehaviour
 
     private void LateUpdate()
     {
-        // 1) 位置跟著塔（掛在塔底下其實也行；這裡給你更穩的方式）
+        // 1) 位置：優先用 boundsSource 的頂端，確保永遠在塔正上方
         if (towerHealth)
-            transform.position = towerHealth.transform.position + worldOffset;
+        {
+            if (boundsSource != null)
+            {
+                Bounds b = boundsSource.bounds;
+                transform.position = new Vector3(b.center.x, b.max.y + topPadding, b.center.z);
+            }
+            else
+            {
+                // 沒指定 boundsSource 才退回舊邏輯（可能會因模型高度/pivot 不同而偏）
+                transform.position = towerHealth.transform.position + worldOffset;
+            }
+        }
 
         // 2) Billboard：面向玩家
         if (billboard && billboardCamera)
         {
             Vector3 dir = transform.position - billboardCamera.position;
             if (dir.sqrMagnitude > 0.0001f)
-                transform.rotation = Quaternion.LookRotation(dir);
+                transform.rotation = Quaternion.LookRotation(dir, Vector3.up);
         }
 
         // 3) Hp 有變才刷新 UI
@@ -87,7 +120,7 @@ public class TowerHealthUI : MonoBehaviour
         lastMaxHp = towerHealth.maxHp;
 
         // 若 maxHp 在 Inspector 被改動，範圍也要同步
-        if (hpSlider.maxValue != lastMaxHp)
+        if (Mathf.Abs(hpSlider.maxValue - lastMaxHp) > 0.001f)
             ConfigureSliderRange();
 
         hpSlider.value = Mathf.Clamp(lastHp, 0, lastMaxHp);
