@@ -899,10 +899,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GameManager
   towerHealth: {fileID: 1063195895}
   gameOverUI: {fileID: 1377994331}
+  restartButtonGO: {fileID: 699431147}
   disableSpawners: 1
   disableRayGuns: 1
   clearGhosts: 1
   allowKeyboardRestart: 0
+  allowControllerRestart: 1
+  controllerRestartButton: 1
+  allowHoldToRestart: 1
+  holdToRestartSeconds: 0.25
+  restartDebounceSeconds: 0.25
 --- !u!4 &579201226
 Transform:
   m_ObjectHideFlags: 0
