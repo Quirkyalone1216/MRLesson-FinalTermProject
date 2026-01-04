@@ -1,4 +1,4 @@
-# README.md（10%）— MR 桌面塔防《Ghost Hunter》（Technical Spike）
+# MR 桌面塔防《Ghost Hunter》（Technical Spike）
 
 ## 專案簡介（一句話）
 在真實桌面上自動放置高塔，玩家以右手扳機射線槍擊殺桌面生成的 Ghost，避免 Ghost 碰塔扣血直到 Game Over。
