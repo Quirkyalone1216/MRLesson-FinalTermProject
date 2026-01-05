@@ -15,6 +15,7 @@ public class TowerHealth : MonoBehaviour
     void Awake()
     {
         hp = maxHp;
+        Debug.Log("[TowerHealth] Awake -> HP reset to max");
     }
 
     void OnValidate()

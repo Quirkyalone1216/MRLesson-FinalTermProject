@@ -7,6 +7,10 @@ using UnityEngine.Rendering;
 [DefaultExecutionOrder(100)]
 public class GhostSpawner : MonoBehaviour
 {
+    [Header("Mode")]
+    [Tooltip("true=依 spawnTimer 自動生成（demo模式）；false=由 WaveManager 呼叫 TrySpawn 控制生成。")]
+    public bool autoSpawn = true;
+
     [Header("Spawn")]
     public float spawnTimer = 1f;
     public GameObject prefabToSpawn;
@@ -25,7 +29,10 @@ public class GhostSpawner : MonoBehaviour
     public Transform tower;
 
     [Header("Lifetime / Pooling")]
+    [Tooltip("僅建議在 autoSpawn=true 時用於限制場上數量；Wave 模式請交給 WaveManager 控制並把 autoSpawn 關掉。")]
     public int maxAlive = 25;
+
+    [Tooltip("Wave 模式建議設為 0，避免時間到 Destroy 造成波次計數干擾。")]
     public float lifeTime = 12f;
 
     [Header("Safety")]
@@ -37,6 +44,15 @@ public class GhostSpawner : MonoBehaviour
     private bool _ready;
     private readonly List<GameObject> _alive = new();
 
+    public int AliveCount
+    {
+        get
+        {
+            _alive.RemoveAll(go => go == null);
+            return _alive.Count;
+        }
+    }
+
     IEnumerator Start()
     {
         while (MRUK.Instance == null || !MRUK.Instance.IsInitialized) yield return null;
@@ -46,12 +62,15 @@ public class GhostSpawner : MonoBehaviour
     void Update()
     {
         if (!_ready) return;
+        if (!autoSpawn) return;
 
         _timer += Time.deltaTime;
         if (_timer < spawnTimer) return;
         _timer -= spawnTimer;
 
         _alive.RemoveAll(go => go == null);
+
+        // 自動模式下才做 maxAlive 的踢除，避免 Wave 模式被干擾
         while (_alive.Count >= maxAlive)
         {
             var old = _alive[0];
@@ -59,18 +78,35 @@ public class GhostSpawner : MonoBehaviour
             if (old) Destroy(old);
         }
 
-        TrySpawnOnce();
+        // 自動模式：用預設 prefabToSpawn
+        TrySpawn(prefabToSpawn, out _);
     }
 
-    void TrySpawnOnce()
+    /// <summary>
+    /// WaveManager 會呼叫這個方法來生成指定 prefab。
+    /// prefabOverride 若為 null，會 fallback 用 prefabToSpawn。
+    /// 成功會回傳 true，並輸出 enemy（可能為 null：若 prefab 沒有 GhostEnemy）。
+    /// </summary>
+    public bool TrySpawn(GameObject prefabOverride, out GhostEnemy enemy)
     {
+        enemy = null;
+
+        // 重要：即使此 component 被 disable，其他腳本仍可直接呼叫 TrySpawn。
+        // GameOver 後 GameManager 會把 spawner.enabled=false，此處必須保底擋住。
+        if (!enabled || !gameObject.activeInHierarchy) return false;
+
+        if (!_ready) return false;
+
         var room = MRUK.Instance.GetCurrentRoom();
-        if (room == null) return;
+        if (room == null) return false;
+
+        var prefab = prefabOverride != null ? prefabOverride : prefabToSpawn;
+        if (prefab == null && !fallbackSpawnTestPrimitive) return false;
 
         for (int i = 0; i < attemptsPerSpawn; i++)
         {
             if (room.GenerateRandomPositionOnSurface(
-                    MRUK.SurfaceType.FACING_UP,      // ★ 修正：朝上水平面（地板/桌面）
+                    MRUK.SurfaceType.FACING_UP,      // 朝上水平面（地板/桌面）
                     minEdgeDistance,
                     LabelFilter.Included(spawnLabels),
                     out var pos, out var norm))
@@ -82,9 +118,9 @@ public class GhostSpawner : MonoBehaviour
 
                 GameObject go = null;
 
-                if (prefabToSpawn != null)
+                if (prefab != null)
                 {
-                    go = Instantiate(prefabToSpawn, pos + norm * pushOut, rot);
+                    go = Instantiate(prefab, pos + norm * pushOut, rot);
                 }
                 else if (fallbackSpawnTestPrimitive)
                 {
@@ -95,22 +131,40 @@ public class GhostSpawner : MonoBehaviour
                     if (c) Destroy(c);
                 }
 
-                if (go != null)
-                {
-                    // 指派 Tower 給怪（讓怪會往塔走）
-                    var enemy = go.GetComponent<GhostEnemy>();
-                    if (!enemy) enemy = go.GetComponentInChildren<GhostEnemy>();
-                    if (enemy) enemy.tower = tower;
+                if (go == null) return false;
 
-                    if (sanitizeSpawn) SanitizeForPassthrough(go);
-                    if (forceTransparentNoDepth) MakeTransparentNoDepth(go);
+                // 指派 Tower 給怪（讓怪會往塔走）
+                var e = go.GetComponent<GhostEnemy>();
+                if (!e) e = go.GetComponentInChildren<GhostEnemy>();
+                if (e) e.tower = tower;
 
-                    _alive.Add(go);
-                    if (lifeTime > 0f) Destroy(go, lifeTime);
-                }
-                return;
+                if (sanitizeSpawn) SanitizeForPassthrough(go);
+                if (forceTransparentNoDepth) MakeTransparentNoDepth(go);
+
+                _alive.Add(go);
+
+                // Wave 模式建議把 lifeTime 設 0；若仍要用自動回收，GhostEnemy 的 OnDestroy 保底要能觸發 Died
+                if (lifeTime > 0f) Destroy(go, lifeTime);
+
+                enemy = e;
+                return true;
             }
         }
+
+        return false;
+    }
+
+    /// <summary>
+    /// 清空目前 Spawner 追蹤的物件（重開/除錯很有用）
+    /// </summary>
+    public void DespawnAll()
+    {
+        for (int i = 0; i < _alive.Count; i++)
+        {
+            var go = _alive[i];
+            if (go) Destroy(go);
+        }
+        _alive.Clear();
     }
 
     void SanitizeForPassthrough(GameObject root)

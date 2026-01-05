@@ -12,41 +12,67 @@ public class GameManager : MonoBehaviour
     [Tooltip("Game Over 時要顯示的 UI（例如 Canvas 或 Panel）。建議在 Inspector 先設為 Inactive。")]
     public GameObject gameOverUI;
 
-    [Tooltip("Game Over 畫面中「Restart」按鈕（或任一可選取 UI 物件）。用於自動設置 UI 焦點，讓 A/Submit 一按就生效。")]
+    [Tooltip("Game Over 畫面中「Restart」按鈕（或任一可選取 UI 物件）。用於自動設置 UI 焦點。")]
     public GameObject restartButtonGO;
 
-    [Header("Game Over Behavior")]
+    [Header("Victory UI")]
+    [Tooltip("Victory 時要顯示的 UI（例如 Canvas 或 Panel）。建議在 Inspector 先設為 Inactive。")]
+    public GameObject victoryUI;
+
+    [Tooltip("Victory 畫面中「Restart」按鈕（或任一可選取 UI 物件）。若不填，會 fallback 用 restartButtonGO。")]
+    public GameObject victoryRestartButtonGO;
+
+    [Header("End State Behavior")]
     public bool disableSpawners = true;
     public bool disableRayGuns = true;
+
+    [Tooltip("Victory/GameOver 時是否停用 WaveManager（保證不再進入下一波）。")]
+    public bool disableWaveManagers = true;
+
     public bool clearGhosts = true;
 
-    [Header("Restart (保險機制)")]
-    [Tooltip("Game Over 後允許按 R 重新開始（桌機/Editor 測試用）。")]
+    [Header("Restart Controls")]
+    [Tooltip("Game Over/Victory 後允許按 R 重新開始（桌機/Editor 測試用）。")]
     public bool allowKeyboardRestart = true;
 
-    [Tooltip("Game Over 後允許按控制器按鍵直接重開（不依賴 UI 射線/焦點，最穩）。")]
-    public bool allowControllerRestart = true;
+    [Tooltip("Game Over/Victory 後允許用控制器按鍵重開。若你懷疑誤觸導致場景重載與血量回滿，先關掉這個最有效。")]
+    public bool allowControllerRestart = false;
 
     [Tooltip("控制器重開按鍵（預設 A）。")]
     public OVRInput.RawButton controllerRestartButton = OVRInput.RawButton.A;
 
-    [Tooltip("為避免 OpenXR/控制器狀態切換時 GetDown 漏掉，可允許『按住』按鍵達到秒數後也能重開。")]
-    public bool allowHoldToRestart = true;
+    [Tooltip("只允許『長按』重開（避免 GetDown 或 UI 焦點造成誤觸）。")]
+    public bool requireHoldToRestart = true;
 
-    [Tooltip("按住重開所需時間（秒，使用 UnscaledTime）。")]
-    public float holdToRestartSeconds = 0.25f;
+    [Tooltip("按住重開所需時間（秒，使用 UnscaledTime）。建議 >= 1.0 秒降低誤觸。")]
+    public float holdToRestartSeconds = 1.0f;
 
     [Tooltip("重開去彈跳（秒），避免一個輸入觸發多次 LoadScene。")]
-    public float restartDebounceSeconds = 0.25f;
+    public float restartDebounceSeconds = 0.5f;
+
+    [Header("Safety / Debug")]
+    [Tooltip("結束畫面出現後，延遲幾秒才允許輸入重開，避免控制器狀態抖動或誤觸。")]
+    public float restartInputGraceSeconds = 0.75f;
+
+    [Tooltip("每次重開前印出 StackTrace，直接抓『誰觸發 Scene 重載』。")]
+    public bool logRestartStackTrace = true;
+
+    [Tooltip("是否自動把 UI 焦點設到 Restart 按鈕。若你覺得 A/Submit 會誤觸，建議關掉。")]
+    public bool autoFocusRestartButton = false;
 
     private GhostSpawner[] spawners;
     private RayGun[] rayGuns;
+    private WaveManager[] waveManagers;
 
     private bool handled;
     private bool restartTriggered;
 
     private float lastRestartTime = -999f;
     private float holdRestartTimer = 0f;
+    private float endShownTime = -999f;
+
+    private enum EndState { None, GameOver, Victory }
+    private EndState endState = EndState.None;
 
     private void Awake()
     {
@@ -57,12 +83,14 @@ public class GameManager : MonoBehaviour
 
         spawners = FindObjectsByType<GhostSpawner>(FindObjectsInactive.Include, FindObjectsSortMode.None);
         rayGuns = FindObjectsByType<RayGun>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        waveManagers = FindObjectsByType<WaveManager>(FindObjectsInactive.Include, FindObjectsSortMode.None);
 #else
         if (!towerHealth)
             towerHealth = FindObjectOfType<TowerHealth>(true);
 
         spawners = FindObjectsOfType<GhostSpawner>(true);
         rayGuns = FindObjectsOfType<RayGun>(true);
+        waveManagers = FindObjectsOfType<WaveManager>(true);
 #endif
     }
 
@@ -70,6 +98,7 @@ public class GameManager : MonoBehaviour
     {
         // 確保遊戲開始時 UI 不會誤開
         if (gameOverUI) gameOverUI.SetActive(false);
+        if (victoryUI) victoryUI.SetActive(false);
     }
 
     private void OnEnable()
@@ -88,50 +117,78 @@ public class GameManager : MonoBehaviour
     {
         if (!handled || restartTriggered) return;
 
-        // 保險：就算 VR UI 互動沒配好，也能重開避免展示翻車
+        // 結束 UI 出現後，先給一段 grace time，避免誤觸
+        if (Time.unscaledTime - endShownTime < restartInputGraceSeconds)
+            return;
+
+        // 桌機測試：R 重開
         if (allowKeyboardRestart && Input.GetKeyDown(KeyCode.R))
         {
-            TryRestart();
+            TryRestart("Keyboard:R");
             return;
         }
 
-        // 最穩：GameOver 後直接用控制器按鍵重開（不依賴 UI 焦點/射線）
+        // 控制器重開
         if (allowControllerRestart)
         {
             // debounce：避免連續觸發
             if (Time.unscaledTime - lastRestartTime < restartDebounceSeconds)
                 return;
 
-            // 1) 按下瞬間
-            if (OVRInput.GetDown(controllerRestartButton))
+            if (requireHoldToRestart)
             {
-                lastRestartTime = Time.unscaledTime;
-                TryRestart();
-                return;
-            }
-
-            // 2) 按住達成（可抵抗 InteractionProfileChanged 時短暫漏抓 GetDown）
-            if (allowHoldToRestart && OVRInput.Get(controllerRestartButton))
-            {
-                holdRestartTimer += Time.unscaledDeltaTime;
-                if (holdRestartTimer >= holdToRestartSeconds)
+                // 只允許長按，降低誤觸
+                if (OVRInput.Get(controllerRestartButton))
                 {
-                    lastRestartTime = Time.unscaledTime;
-                    TryRestart();
-                    return;
+                    holdRestartTimer += Time.unscaledDeltaTime;
+                    if (holdRestartTimer >= holdToRestartSeconds)
+                    {
+                        lastRestartTime = Time.unscaledTime;
+                        TryRestart($"Controller:Hold({controllerRestartButton})");
+                        return;
+                    }
+                }
+                else
+                {
+                    holdRestartTimer = 0f;
                 }
             }
             else
             {
-                holdRestartTimer = 0f;
+                // 允許按下瞬間
+                if (OVRInput.GetDown(controllerRestartButton))
+                {
+                    lastRestartTime = Time.unscaledTime;
+                    TryRestart($"Controller:Down({controllerRestartButton})");
+                    return;
+                }
             }
         }
     }
 
     private void OnTowerDied()
     {
+        HandleEnd(EndState.GameOver);
+    }
+
+    // 由 WaveManager 呼叫（Victory）
+    public void HandleVictory()
+    {
+        HandleEnd(EndState.Victory);
+    }
+
+    private void HandleEnd(EndState state)
+    {
         if (handled) return;
+
         handled = true;
+        endState = state;
+
+        if (disableWaveManagers && waveManagers != null)
+        {
+            foreach (var w in waveManagers)
+                if (w) w.enabled = false;
+        }
 
         if (disableSpawners && spawners != null)
         {
@@ -156,41 +213,62 @@ public class GameManager : MonoBehaviour
                 if (e) Destroy(e.gameObject);
         }
 
-        if (gameOverUI) gameOverUI.SetActive(true);
+        // UI 切換
+        if (state == EndState.GameOver)
+        {
+            if (victoryUI) victoryUI.SetActive(false);
+            if (gameOverUI) gameOverUI.SetActive(true);
+        }
+        else // Victory
+        {
+            if (gameOverUI) gameOverUI.SetActive(false);
+            if (victoryUI) victoryUI.SetActive(true);
+        }
 
-        // UI 焦點保險：讓 A/Submit 也能穩定點到 Restart（即使你仍想靠 UI 操作）
-        if (restartButtonGO != null)
-            StartCoroutine(FocusRestartButtonNextFrame());
+        endShownTime = Time.unscaledTime;
 
-        Debug.Log("[GameManager] Game Over handled: Spawners/Guns disabled, Ghosts cleared. UI shown.");
+        // 若你覺得 A/Submit 會誤觸，請把 autoFocusRestartButton 關掉
+        if (autoFocusRestartButton)
+        {
+            var focusTarget = (state == EndState.Victory && victoryRestartButtonGO != null)
+                ? victoryRestartButtonGO
+                : restartButtonGO;
+
+            if (focusTarget != null)
+                StartCoroutine(FocusSelectedNextFrame(focusTarget));
+        }
+
+        Debug.Log($"[GameManager] End handled: state={state}, Spawners/Guns/Waves disabled, Ghosts cleared. UI shown.");
     }
 
-    private IEnumerator FocusRestartButtonNextFrame()
+    private IEnumerator FocusSelectedNextFrame(GameObject target)
     {
-        // 等一個 frame，避免剛 SetActive(true) 時 EventSystem/Selectable 尚未 ready
         yield return null;
 
         if (EventSystem.current == null) yield break;
 
-        // 清掉舊選取避免某些 module 不更新
         EventSystem.current.SetSelectedGameObject(null);
-
-        // 設定焦點到 Restart
-        EventSystem.current.SetSelectedGameObject(restartButtonGO);
+        EventSystem.current.SetSelectedGameObject(target);
     }
 
-    private void TryRestart()
+    private void TryRestart(string reason)
     {
         if (restartTriggered) return;
         restartTriggered = true;
 
+        Debug.Log($"[GameManager] Restart triggered. reason={reason}");
+
         RestartGame();
     }
 
-    // 給 UI Button 的 OnClick() 直接呼叫
+    // 給 UI Button 的 OnClick() 直接呼叫（GameOver/Victory 共用）
     public void RestartGame()
     {
-        // 若你未來有做 Time.timeScale = 0 的暫停，這行可以避免重開後時間卡住
+        if (logRestartStackTrace)
+        {
+            Debug.Log("[GameManager] RestartGame() called. StackTrace:\n" + System.Environment.StackTrace);
+        }
+
         Time.timeScale = 1f;
 
         var scene = SceneManager.GetActiveScene();
